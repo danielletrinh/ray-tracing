@@ -19,6 +19,8 @@ CMakeCache.txt
 CMakeFiles/
 *.cmake
 Makefile
+ray_tracer
+INTRODUCTION.pptx
 
 # OS specific
 .DS_Store

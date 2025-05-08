@@ -71,7 +71,6 @@ protected:
     virtual Vector3 GetRandPointLight(const Vector3& crashPoint);
 };
 
-/*
 class SphereLight : public Light {
     Vector3 O;
     double R;
@@ -88,6 +87,5 @@ public:
 protected:
     virtual Vector3 GetRandPointLight(const Vector3& crashPoint);
 };
-*/
 
 #endif

@@ -95,9 +95,7 @@ Vector3 SquareLight::GetRandPointLight(const Vector3& crashPoint)
 
 
 // ==========================================
-// TODO: NEED TO IMPLEMENT
-/*
- 
+
 void SphereLight::Input( std::string var , std::stringstream& fin ) {
      if ( var == "O=" ) O.Input( fin );
      if ( var == "R=" ) fin>>R;
@@ -105,13 +103,40 @@ void SphereLight::Input( std::string var , std::stringstream& fin ) {
 }
 
 double SphereLight::CalnShade( Vector3 C , Primitive* primitive_head , int shade_quality ) {
+    int shade = 0;
+
+    for (int i = 0; i < shade_quality; i++) {
+        Vector3 randO = GetRandPointLight(C);
+        Vector3 V = randO - C;
+        double dist = V.Module();
+
+        bool visible = true;
+        for (Primitive* now = primitive_head; now != nullptr; now = now->GetNext()) {
+            if (now == lightPrimitive) continue;
+            CollidePrimitive tmp = now->Collide(C, V);
+            if (tmp.dist < dist - EPS) {
+                visible = false;
+                break;
+            }
+        }
+        shade += visible ? 1 : 0;
+    }
+    return double(shade) / shade_quality;
 }
 
 Primitive* SphereLight::CreateLightPrimitive()
 {
+    SphereLightPrimitive* res = new SphereLightPrimitive(O, R, color);
+    lightPrimitive = res;
+    return res;
 }
 
 Vector3 SphereLight::GetRandPointLight(const Vector3& crashPoint)
 {
+    double theta = 2 * M_PI * ran();
+    double z = 2 * ran() - 1;  // Uniform in [-1, 1]
+    double r = sqrt(1 - z*z);  // Radius in xy-plane
+
+    Vector3 dir = Vector3(r * cos(theta), r * sin(theta), z);
+    return O + R * dir;
 }
-*/
