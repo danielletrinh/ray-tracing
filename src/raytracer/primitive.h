@@ -133,8 +133,6 @@ public:
     virtual bool IsLightPrimitive() const { return true; }
 };
 
-/*
-// TODO: NEED TO IMPLEMENT. Follow the code given below or totally re-write it
 class Cylinder : public Primitive {
     Vector3 O1, O2;
     double R;
@@ -169,7 +167,5 @@ private:
     std::pair<double, double> valueAt(double u);
     std::pair<double, double> valueAt(double u, const std::vector<double>& xs, const std::vector<double>& ys);
 };
-
-*/
 
 #endif

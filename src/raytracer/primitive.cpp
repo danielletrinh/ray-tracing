@@ -233,8 +233,7 @@ Color Square::GetTexture(Vector3 crash_C) {
 }
 
 // -----------------------------------------------
-// TODO: NEED TO IMPLEMENT. Follow the code given below or totally re-write it
-/*
+
 void Cylinder::Input( std::string var , std::stringstream& fin ) {
     if ( var == "O1=" ) O1.Input( fin );
     if ( var == "O2=" ) O2.Input( fin );
@@ -242,20 +241,116 @@ void Cylinder::Input( std::string var , std::stringstream& fin ) {
     Primitive::Input( var , fin );
 }
 
-CollidePrimitive Cylinder::Collide( Vector3 ray_O , Vector3 ray_V ) {
+CollidePrimitive Cylinder::Collide(Vector3 ray_O, Vector3 ray_V) {
     CollidePrimitive ret;
 
-    // TODO: NEED TO IMPLEMENT
+    // Get cylinder axis and height
+    Vector3 axis = O2 - O1;
+    double height = axis.Module();
+    axis = axis.GetUnitVector();
+
+    // Check intersection with cylinder body
+    Vector3 AO = ray_O - O1;
+    Vector3 AOxAxis = AO * axis;
+    Vector3 ray_VxAxis = ray_V * axis;
+
+    double a = ray_VxAxis.Module2();
+    double b = 2 * AOxAxis.Dot(ray_VxAxis);
+    double c = AOxAxis.Module2() - R * R;
+
+    double delta = b * b - 4 * a * c;
+    double t = -1;
+    Vector3 P, N;
+    bool isSide = true;
+
+    if (delta > EPS) {
+        double t1 = (-b - sqrt(delta)) / (2 * a);
+        double t2 = (-b + sqrt(delta)) / (2 * a);
+
+        if (t1 > EPS) {
+            P = ray_O + ray_V * t1;
+            double h = (P - O1).Dot(axis);
+            if (h >= 0 && h <= height) {
+                t = t1;
+            }
+        }
+
+        if (t2 > EPS && (t < 0 || t2 < t)) {
+            P = ray_O + ray_V * t2;
+            double h = (P - O1).Dot(axis);
+            if (h >= 0 && h <= height) {
+                t = t2;
+            }
+        }
+    }
+
+    // Check intersection with end caps
+    double denom1 = ray_V.Dot(axis);
+    if (fabs(denom1) > EPS) {
+        double t_cap = (O1 - ray_O).Dot(axis) / denom1;
+        if (t_cap > EPS && (t < 0 || t_cap < t)) {
+            Vector3 P_cap = ray_O + ray_V * t_cap;
+            Vector3 v = P_cap - O1;
+            if (v.Module2() <= R * R) {
+                t = t_cap;
+                P = P_cap;
+                N = -axis;  // Bottom cap normal points down
+                isSide = false;
+                ret.front = (denom1 < 0);
+            }
+        }
+    }
+
+    double denom2 = ray_V.Dot(axis);
+    if (fabs(denom2) > EPS) {
+        double t_cap = (O2 - ray_O).Dot(axis) / denom2;
+        if (t_cap > EPS && (t < 0 || t_cap < t)) {
+            Vector3 P_cap = ray_O + ray_V * t_cap;
+            Vector3 v = P_cap - O2;
+            if (v.Module2() <= R * R) {
+                t = t_cap;
+                P = P_cap;
+                N = axis;  // Top cap normal points up
+                isSide = false;
+                ret.front = (denom2 < 0);
+            }
+        }
+    }
+
+    if (t < 0) return ret;
+
+    if (isSide) {
+        Vector3 hitToAxis = P - O1;
+        double h = hitToAxis.Dot(axis);
+        Vector3 axisPoint = O1 + axis * h;
+        N = (P - axisPoint).GetUnitVector();
+        ret.front = (ray_V.Dot(N) < 0);
+    }
+
+    ret.dist = t;
+    ret.C = P;
+    ret.N = N;
+    ret.isCollide = true;
+    ret.collide_primitive = this;
+    return ret;
 }
 
 Color Cylinder::GetTexture(Vector3 crash_C) {
-    double u = 0.5 ,v = 0.5;
+    // Calculate texture coordinates
+    Vector3 axis = (O2 - O1).GetUnitVector();
+    double h = (crash_C - O1).Dot(axis);
+    double theta = atan2((crash_C - O1 - axis * h).Dot(axis.GetAnVerticalVector()),
+                        (crash_C - O1 - axis * h).Dot(axis * axis.GetAnVerticalVector()));
 
-    // TODO: NEED TO IMPLEMENT
+    double u = theta / (2 * PI);
+    double v = h / (O2 - O1).Module();
+
+    return material->texture->GetSmoothColor(u, v);
 }
 
 // -----------------------------------------------
 
+/*
 void Bezier::Input( std::string var , std::stringstream& fin ) {
     if ( var == "O1=" ) O1.Input( fin );
     if ( var == "O2=" ) O2.Input( fin );
