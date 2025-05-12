@@ -350,7 +350,10 @@ Color Cylinder::GetTexture(Vector3 crash_C) {
 
 // -----------------------------------------------
 
-/*
+Bezier::~Bezier() {
+    delete boundingCylinder;
+}
+
 void Bezier::Input( std::string var , std::stringstream& fin ) {
     if ( var == "O1=" ) O1.Input( fin );
     if ( var == "O2=" ) O2.Input( fin );
@@ -376,18 +379,181 @@ void Bezier::Input( std::string var , std::stringstream& fin ) {
     Primitive::Input( var , fin );
 }
 
-CollidePrimitive Bezier::Collide( Vector3 ray_O , Vector3 ray_V ) {
+CollidePrimitive Bezier::Collide(Vector3 ray_O, Vector3 ray_V) {
     CollidePrimitive ret;
 
-    // TODO: NEED TO IMPLEMENT
+    // Get axis information
+    Vector3 axis = O2 - O1;
+    double axisLen = axis.Module();
+    if (axisLen < EPS) return ret; // Degenerate case: zero-length axis
+    Vector3 axisDir = axis.GetUnitVector();
 
+    // Early exit for parallel rays
+    if (fabs(ray_V.Dot(axisDir)) > 0.999) {
+        return ret;
+    }
+
+    // First check intersection with bounding cylinder
+    CollidePrimitive cyl_col = boundingCylinder->Collide(ray_O, ray_V);
+    if (!cyl_col.isCollide) return ret;
+
+    // Newton-Raphson setup
+    const int MAX_ITER = 20;
+    const double EPS = 1e-6;
+    const double DAMPING_FACTOR = 0.5; // Damping to prevent overshooting
+
+    // Initial guess from cylinder intersection
+    double t = cyl_col.dist;
+    Vector3 P = ray_O + ray_V * t;
+    double s = (P - O1).Dot(axisDir);
+    double u = s / axisLen;
+
+    // Improve initial guess using linear interpolation
+    if (u >= 0 && u <= 1) {
+        auto [z, r] = valueAt(u);
+        Vector3 axisPoint = O1 + axisDir * s;
+        Vector3 radialVec = P - axisPoint;
+        double radialDist = radialVec.Module();
+
+        // Adjust t based on the difference between actual and expected radius
+        double dot = ray_V.Dot(radialVec.GetUnitVector());
+        if (fabs(dot) > EPS) {
+            t += (r - radialDist) / dot;
+        }
+    }
+
+    // Track convergence
+    double lastF = std::numeric_limits<double>::max();
+    int noImprovementCount = 0;
+    const int MAX_NO_IMPROVEMENT = 3;
+
+    // Newton-Raphson iteration
+    for (int iter = 0; iter < MAX_ITER; ++iter) {
+        P = ray_O + ray_V * t;
+
+        // Project hit point onto axis
+        s = (P - O1).Dot(axisDir);
+        u = s / axisLen;
+
+        // Clamp u to valid range
+        u = std::max(0.0, std::min(1.0, u));
+
+        // Get radius at current position
+        auto [z, r] = valueAt(u);
+        Vector3 axisPoint = O1 + axisDir * s;
+        Vector3 radialVec = P - axisPoint;
+        double radialDist = radialVec.Module();
+
+        // Calculate error function
+        double F = radialDist - r;
+
+        // Check for convergence
+        if (fabs(F) < EPS) {
+            // Success! Calculate proper normal
+            const double du = 0.001;
+            auto [zu1, ru1] = valueAt(std::min(u + du, 1.0));
+            auto [zu2, ru2] = valueAt(std::max(u - du, 0.0));
+
+            // Calculate derivatives
+            double dr_du = (ru1 - ru2) / (2 * du);
+            double dz_du = (zu1 - zu2) / (2 * du);
+
+            // Get tangent to profile curve
+            Vector3 profileTangent = axisDir * dz_du + radialVec.GetUnitVector() * dr_du;
+            profileTangent = profileTangent.GetUnitVector();
+
+            // Normal is perpendicular to both profile tangent and circling direction
+            Vector3 circleDir = (radialVec.GetUnitVector() * axisDir).GetUnitVector();
+            ret.N = (profileTangent * circleDir).GetUnitVector();
+
+            ret.dist = t;
+            ret.C = P;
+            ret.isCollide = true;
+            ret.front = (ray_V.Dot(ret.N) < 0);
+            ret.collide_primitive = this;
+            return ret;
+        }
+
+        // Check if we're diverging
+        if (fabs(F) > fabs(lastF)) {
+            noImprovementCount++;
+            if (noImprovementCount >= MAX_NO_IMPROVEMENT) {
+                break;
+            }
+        } else {
+            noImprovementCount = 0;
+        }
+        lastF = F;
+
+        // Calculate derivative using numerical differentiation
+        const double DELTA_T = 0.0001 * t;
+        Vector3 P2 = ray_O + ray_V * (t + DELTA_T);
+        double s2 = (P2 - O1).Dot(axisDir);
+        double u2 = s2 / axisLen;
+        u2 = std::max(0.0, std::min(1.0, u2));
+
+        auto [z2, r2] = valueAt(u2);
+        Vector3 axisPoint2 = O1 + axisDir * s2;
+        double radialDist2 = (P2 - axisPoint2).Module();
+        double F2 = radialDist2 - r2;
+
+        double dF = (F2 - F) / DELTA_T;
+
+        // Prevent division by zero and handle numerical instability
+        if (fabs(dF) < 1e-10) {
+            break;
+        }
+
+        // Apply damping to prevent overshooting
+        double step = F / dF;
+        step *= DAMPING_FACTOR;
+
+        // Limit maximum step size
+        if (fabs(step) > t/2) {
+            step = (step > 0 ? 1 : -1) * t/2;
+        }
+
+        t -= step;
+
+        // Prevent negative t
+        if (t <= 0) {
+            break;
+        }
+    }
+
+    // If we exit the loop without finding a valid intersection
+    return ret;
 }
 
 Color Bezier::GetTexture(Vector3 crash_C) {
-    double u = 0.5 ,v = 0.5;
+    Vector3 axis = (O2 - O1).GetUnitVector();
 
-    // TODO: NEED TO IMPLEMENT
+    // Calculate height along axis (v coordinate)
+    double height = (crash_C - O1).Dot(axis);
+    double v = height / (O2 - O1).Module();
+    v = std::max(0.0, std::min(1.0, v)); // Clamp to [0,1]
+
+    // Calculate angle around axis (u coordinate)
+    Vector3 radial = crash_C - (O1 + axis * height);
+
+    // Ensure consistent coordinate system
+    if (Nx.Module() < 0.001 || Ny.Module() < 0.001) {
+        // Recalculate coordinate system if needed
+        Nx = axis.GetAnVerticalVector().GetUnitVector();
+        Ny = (axis * Nx).GetUnitVector();
+    }
+
+    // Calculate angle using consistent axes
+    double cosAngle = radial.Dot(Nx) / radial.Module();
+    double sinAngle = radial.Dot(Ny) / radial.Module();
+
+    // Map angle to [0,1] range without discontinuity
+    double u = atan2(sinAngle, cosAngle) / (2 * PI);
+    if (u < 0) u += 1.0; // Ensure u is in [0,1]
+
+    return material->texture->GetSmoothColor(u, v);
 }
+
 
 std::pair<double, double> Bezier::valueAt(double u)
 {
@@ -407,4 +573,3 @@ std::pair<double, double> Bezier::valueAt(double u, const std::vector<double>& x
     }
     return std::make_pair(x, y);
 }
-*/

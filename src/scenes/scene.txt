@@ -25,12 +25,6 @@ light square
     color= 1 0.8 0.6
 end
 
-light sphere
-    O=  -3 4 0
-    R= 0.5
-    color= 0.9 0.95 0.85
-end
-
 primitive sphere
     O= 0.5 5.14 -1.8
     R= 0.2
@@ -100,6 +94,21 @@ primitive cylinder
     R= 0.3
     color= 0.8 0.6 0.9
     diff= 0.8
+    spec= 0.2
+    refl= 0.1
+end
+
+primitive bezier
+    O1= 0 5 -2
+    O2= 0 8 -2
+    P= 0 0.5
+    P= 0.33 1.2
+    P= 0.66 0.8
+    P= 0.83 0.6
+    P= 1 0.4
+    Cylinder
+    color= 0.9 0.7 0.8
+    diff= 0.7
     spec= 0.2
     refl= 0.1
 end

@@ -157,7 +157,7 @@ class Bezier : public Primitive {
 
 public:
     Bezier() : Primitive() {boundingCylinder = NULL; degree = -1;}
-    ~Bezier() {}
+    ~Bezier();
 
     void Input( std::string , std::stringstream& );
     CollidePrimitive Collide( Vector3 ray_O , Vector3 ray_V );
