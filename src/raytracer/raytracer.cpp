@@ -193,8 +193,7 @@ void Raytracer::CreateAll()
             std::string type; fin >> type;
             if ( type == "point" ) new_light = new PointLight;
             if ( type == "square" ) new_light = new SquareLight;
-            // TODO: IMPLEMENT HERE
-            //if ( type == "sphere" ) new_light = new SphereLight;
+            if ( type == "sphere" ) new_light = new SphereLight;
 
             if ( new_light != nullptr ) {
                 new_light->SetNext( light_head );

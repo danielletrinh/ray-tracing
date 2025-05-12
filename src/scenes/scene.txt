@@ -26,9 +26,9 @@ light square
 end
 
 light sphere
-    O=  3 0
-    R= 0.3
-    color= 0.6 0.8 1
+    O=  -3 4 0
+    R= 0.5
+    color= 0.9 0.95 0.85
 end
 
 primitive sphere
