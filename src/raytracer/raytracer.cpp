@@ -9,7 +9,7 @@
 
 const double SPEC_POWER = 20;
 const int MAX_DREFL_DEP = 2;
-const int MAX_RAYTRACING_DEP = 10;
+const int MAX_RAYTRACING_DEP = 7;
 const int HASH_FAC = 7;
 const int HASH_MOD = 10000007;
 const int NUM_RESAMPLE = 3;
@@ -74,10 +74,13 @@ Color Raytracer::CalnReflection(CollidePrimitive collide_primitive , Vector3 ray
     if (primitive->GetMaterial()->drefl < EPS || dep > MAX_DREFL_DEP) {
         return RayTracing(collide_primitive.C, ray_V, dep + 1, hash) * primitive->GetMaterial()->color * primitive->GetMaterial()->refl;
     }
-    // diffuse reflection (fuzzy reflection)
     else {
-        // TODO: NEED TO IMPLEMENT
-        return Color();
+    // diffuse reflection (fuzzy reflection)
+        Vector3 diffuse_dir = ray_V.Diffuse();
+        Vector3 final_dir = (ray_V + diffuse_dir * primitive->GetMaterial()->drefl).GetUnitVector();
+        return RayTracing(collide_primitive.C, final_dir, dep + 1, hash) *
+            primitive->GetMaterial()->color *
+            primitive->GetMaterial()->refl;
     }
 }
 

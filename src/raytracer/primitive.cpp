@@ -385,55 +385,30 @@ CollidePrimitive Bezier::Collide(Vector3 ray_O, Vector3 ray_V) {
     // Get axis information
     Vector3 axis = O2 - O1;
     double axisLen = axis.Module();
-    if (axisLen < EPS) return ret; // Degenerate case: zero-length axis
+    if (axisLen < EPS) return ret;
     Vector3 axisDir = axis.GetUnitVector();
 
     // Early exit for parallel rays
-    if (fabs(ray_V.Dot(axisDir)) > 0.999) {
-        return ret;
-    }
+    if (fabs(ray_V.Dot(axisDir)) > 0.999) return ret;
 
     // First check intersection with bounding cylinder
     CollidePrimitive cyl_col = boundingCylinder->Collide(ray_O, ray_V);
     if (!cyl_col.isCollide) return ret;
 
     // Newton-Raphson setup
-    const int MAX_ITER = 20;
-    const double EPS = 1e-6;
-    const double DAMPING_FACTOR = 0.5; // Damping to prevent overshooting
+    const int MAX_ITER = 30;  // Increased iterations
+    const double EPS = 1e-8;  // Tighter convergence
+    const double DAMPING_FACTOR = 0.5;
 
     // Initial guess from cylinder intersection
     double t = cyl_col.dist;
-    Vector3 P = ray_O + ray_V * t;
-    double s = (P - O1).Dot(axisDir);
-    double u = s / axisLen;
-
-    // Improve initial guess using linear interpolation
-    if (u >= 0 && u <= 1) {
-        auto [z, r] = valueAt(u);
-        Vector3 axisPoint = O1 + axisDir * s;
-        Vector3 radialVec = P - axisPoint;
-        double radialDist = radialVec.Module();
-
-        // Adjust t based on the difference between actual and expected radius
-        double dot = ray_V.Dot(radialVec.GetUnitVector());
-        if (fabs(dot) > EPS) {
-            t += (r - radialDist) / dot;
-        }
-    }
-
-    // Track convergence
+    double lastU = -1;
     double lastF = std::numeric_limits<double>::max();
-    int noImprovementCount = 0;
-    const int MAX_NO_IMPROVEMENT = 3;
 
-    // Newton-Raphson iteration
     for (int iter = 0; iter < MAX_ITER; ++iter) {
-        P = ray_O + ray_V * t;
-
-        // Project hit point onto axis
-        s = (P - O1).Dot(axisDir);
-        u = s / axisLen;
+        Vector3 P = ray_O + ray_V * t;
+        double s = (P - O1).Dot(axisDir);
+        double u = s / axisLen;
 
         // Clamp u to valid range
         u = std::max(0.0, std::min(1.0, u));
@@ -448,45 +423,37 @@ CollidePrimitive Bezier::Collide(Vector3 ray_O, Vector3 ray_V) {
         double F = radialDist - r;
 
         // Check for convergence
-        if (fabs(F) < EPS) {
-            // Success! Calculate proper normal
-            const double du = 0.001;
-            auto [zu1, ru1] = valueAt(std::min(u + du, 1.0));
-            auto [zu2, ru2] = valueAt(std::max(u - du, 0.0));
+        if (fabs(F) < EPS && fabs(u - lastU) < EPS) {
+            Vector3 radialDir = radialVec.GetUnitVector();
+            Vector3 surfacePoint = axisPoint + radialDir * r;
+            if ((P - surfacePoint).Module() < EPS) {
+                // Calculate normal
+                const double du = 0.001;
+                auto [zu1, ru1] = valueAt(std::min(u + du, 1.0));
+                auto [zu2, ru2] = valueAt(std::max(u - du, 0.0));
 
-            // Calculate derivatives
-            double dr_du = (ru1 - ru2) / (2 * du);
-            double dz_du = (zu1 - zu2) / (2 * du);
+                double dr_du = (ru1 - ru2) / (2 * du);
+                double dz_du = (zu1 - zu2) / (2 * du);
 
-            // Get tangent to profile curve
-            Vector3 profileTangent = axisDir * dz_du + radialVec.GetUnitVector() * dr_du;
-            profileTangent = profileTangent.GetUnitVector();
+                Vector3 profileTangent = axisDir * dz_du + radialDir * dr_du;
+                profileTangent = profileTangent.GetUnitVector();
+                Vector3 circleDir = (radialDir * axisDir).GetUnitVector();
+                ret.N = (profileTangent * circleDir).GetUnitVector();
 
-            // Normal is perpendicular to both profile tangent and circling direction
-            Vector3 circleDir = (radialVec.GetUnitVector() * axisDir).GetUnitVector();
-            ret.N = (profileTangent * circleDir).GetUnitVector();
+                // Ensure normal points outward
+                if (radialVec.Dot(ret.N) < 0) ret.N = -ret.N;
 
-            ret.dist = t;
-            ret.C = P;
-            ret.isCollide = true;
-            ret.front = (ray_V.Dot(ret.N) < 0);
-            ret.collide_primitive = this;
-            return ret;
-        }
-
-        // Check if we're diverging
-        if (fabs(F) > fabs(lastF)) {
-            noImprovementCount++;
-            if (noImprovementCount >= MAX_NO_IMPROVEMENT) {
-                break;
+                ret.dist = t;
+                ret.C = P;
+                ret.isCollide = true;
+                ret.front = (ray_V.Dot(ret.N) < 0);
+                ret.collide_primitive = this;
+                return ret;
             }
-        } else {
-            noImprovementCount = 0;
         }
-        lastF = F;
 
-        // Calculate derivative using numerical differentiation
-        const double DELTA_T = 0.0001 * t;
+        // Calculate derivative
+        const double DELTA_T = std::max(1e-6, 0.0001 * t);
         Vector3 P2 = ray_O + ray_V * (t + DELTA_T);
         double s2 = (P2 - O1).Dot(axisDir);
         double u2 = s2 / axisLen;
@@ -499,29 +466,27 @@ CollidePrimitive Bezier::Collide(Vector3 ray_O, Vector3 ray_V) {
 
         double dF = (F2 - F) / DELTA_T;
 
-        // Prevent division by zero and handle numerical instability
-        if (fabs(dF) < 1e-10) {
-            break;
+        // Fallback to analytical derivative if numerical derivative fails
+        if (std::isnan(dF) || std::isinf(dF)) {
+            Vector3 radialDir = radialVec.GetUnitVector();
+            double dr_du = (r2 - r) / (u2 - u);
+            dF = ray_V.Dot(radialDir) - dr_du * (ray_V.Dot(axisDir) / axisLen);
         }
 
-        // Apply damping to prevent overshooting
+        // Apply damping and limit step size
         double step = F / dF;
         step *= DAMPING_FACTOR;
-
-        // Limit maximum step size
         if (fabs(step) > t/2) {
             step = (step > 0 ? 1 : -1) * t/2;
         }
 
         t -= step;
+        if (t <= 0) break;
 
-        // Prevent negative t
-        if (t <= 0) {
-            break;
-        }
+        lastU = u;
+        lastF = F;
     }
 
-    // If we exit the loop without finding a valid intersection
     return ret;
 }
 

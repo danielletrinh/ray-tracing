@@ -96,6 +96,7 @@ primitive cylinder
     diff= 0.8
     spec= 0.2
     refl= 0.1
+    drefl= 0.7
 end
 
 primitive bezier
