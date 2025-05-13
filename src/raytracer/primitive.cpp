@@ -350,19 +350,15 @@ Color Cylinder::GetTexture(Vector3 crash_C) {
 
 // -----------------------------------------------
 
-Bezier::~Bezier() {
-    delete boundingCylinder;
-}
-
 void Bezier::Input( std::string var , std::stringstream& fin ) {
     if ( var == "O1=" ) O1.Input( fin );
     if ( var == "O2=" ) O2.Input( fin );
     if ( var == "P=" ) {
-        degree++;
         double newR, newZ;
         fin>>newZ>>newR;
         R.push_back(newR);
         Z.push_back(newZ);
+        degree++;
     }
     if ( var == "Cylinder" ) {
         double maxR = 0;
@@ -372,9 +368,9 @@ void Bezier::Input( std::string var , std::stringstream& fin ) {
             }
         }
         boundingCylinder = new Cylinder(O1, O2, maxR);
-        N = (O1 - O2).GetUnitVector();
-        Nx = N.GetAnVerticalVector();
-        Ny = N * Nx;
+        N = (O2 - O1).GetUnitVector();
+        Nx = N.GetAnVerticalVector().GetUnitVector();
+        Ny = (N * Nx).GetUnitVector();
     }
     Primitive::Input( var , fin );
 }
@@ -382,109 +378,102 @@ void Bezier::Input( std::string var , std::stringstream& fin ) {
 CollidePrimitive Bezier::Collide(Vector3 ray_O, Vector3 ray_V) {
     CollidePrimitive ret;
 
+    // Basic validation
+    if (degree < 0 || R.empty() || Z.empty() || !boundingCylinder) return ret;
+
+    // Normalize ray direction
+    ray_V = ray_V.GetUnitVector();
+
+    // First check with bounding cylinder for early rejection
+    CollidePrimitive cyl_col = boundingCylinder->Collide(ray_O, ray_V);
+    if (!cyl_col.isCollide) return ret;
+
     // Get axis information
     Vector3 axis = O2 - O1;
     double axisLen = axis.Module();
     if (axisLen < EPS) return ret;
     Vector3 axisDir = axis.GetUnitVector();
 
-    // Early exit for parallel rays
-    if (fabs(ray_V.Dot(axisDir)) > 0.999) return ret;
+    // Binary search for intersection
+    const int MAX_STEPS = 50;
+    double t_min = 0;
+    double t_max = cyl_col.dist;
+    double best_t = -1;
+    double best_dist = 1e6;
+    double best_u = 0.5;
 
-    // First check intersection with bounding cylinder
-    CollidePrimitive cyl_col = boundingCylinder->Collide(ray_O, ray_V);
-    if (!cyl_col.isCollide) return ret;
-
-    // Newton-Raphson setup
-    const int MAX_ITER = 30;  // Increased iterations
-    const double EPS = 1e-8;  // Tighter convergence
-    const double DAMPING_FACTOR = 0.5;
-
-    // Initial guess from cylinder intersection
-    double t = cyl_col.dist;
-    double lastU = -1;
-    double lastF = std::numeric_limits<double>::max();
-
-    for (int iter = 0; iter < MAX_ITER; ++iter) {
+    for (int step = 0; step < MAX_STEPS; step++) {
+        double t = (t_min + t_max) * 0.5;
         Vector3 P = ray_O + ray_V * t;
+
+        // Project point onto axis
         double s = (P - O1).Dot(axisDir);
         double u = s / axisLen;
-
-        // Clamp u to valid range
-        u = std::max(0.0, std::min(1.0, u));
+        u = std::max(0.0, std::min(1.0, u)); // Clamp to valid range
 
         // Get radius at current position
         auto [z, r] = valueAt(u);
+
+        // Calculate distance from point to surface of revolution
         Vector3 axisPoint = O1 + axisDir * s;
         Vector3 radialVec = P - axisPoint;
         double radialDist = radialVec.Module();
+        double dist = fabs(radialDist - r);
 
-        // Calculate error function
-        double F = radialDist - r;
-
-        // Check for convergence
-        if (fabs(F) < EPS && fabs(u - lastU) < EPS) {
-            Vector3 radialDir = radialVec.GetUnitVector();
-            Vector3 surfacePoint = axisPoint + radialDir * r;
-            if ((P - surfacePoint).Module() < EPS) {
-                // Calculate normal
-                const double du = 0.001;
-                auto [zu1, ru1] = valueAt(std::min(u + du, 1.0));
-                auto [zu2, ru2] = valueAt(std::max(u - du, 0.0));
-
-                double dr_du = (ru1 - ru2) / (2 * du);
-                double dz_du = (zu1 - zu2) / (2 * du);
-
-                Vector3 profileTangent = axisDir * dz_du + radialDir * dr_du;
-                profileTangent = profileTangent.GetUnitVector();
-                Vector3 circleDir = (radialDir * axisDir).GetUnitVector();
-                ret.N = (profileTangent * circleDir).GetUnitVector();
-
-                // Ensure normal points outward
-                if (radialVec.Dot(ret.N) < 0) ret.N = -ret.N;
-
-                ret.dist = t;
-                ret.C = P;
-                ret.isCollide = true;
-                ret.front = (ray_V.Dot(ret.N) < 0);
-                ret.collide_primitive = this;
-                return ret;
-            }
+        if (dist < best_dist) {
+            best_dist = dist;
+            best_t = t;
+            best_u = u;
         }
 
-        // Calculate derivative
-        const double DELTA_T = std::max(1e-6, 0.0001 * t);
-        Vector3 P2 = ray_O + ray_V * (t + DELTA_T);
-        double s2 = (P2 - O1).Dot(axisDir);
-        double u2 = s2 / axisLen;
-        u2 = std::max(0.0, std::min(1.0, u2));
-
-        auto [z2, r2] = valueAt(u2);
-        Vector3 axisPoint2 = O1 + axisDir * s2;
-        double radialDist2 = (P2 - axisPoint2).Module();
-        double F2 = radialDist2 - r2;
-
-        double dF = (F2 - F) / DELTA_T;
-
-        // Fallback to analytical derivative if numerical derivative fails
-        if (std::isnan(dF) || std::isinf(dF)) {
-            Vector3 radialDir = radialVec.GetUnitVector();
-            double dr_du = (r2 - r) / (u2 - u);
-            dF = ray_V.Dot(radialDir) - dr_du * (ray_V.Dot(axisDir) / axisLen);
+        // Update search range
+        if (radialDist > r) {
+            t_min = t;  // Ray point is outside surface
+        } else {
+            t_max = t;  // Ray point is inside surface
         }
 
-        // Apply damping and limit step size
-        double step = F / dF;
-        step *= DAMPING_FACTOR;
-        if (fabs(step) > t/2) {
-            step = (step > 0 ? 1 : -1) * t/2;
+        // Exit early if we're close enough
+        if (dist < 1e-6) break;
+    }
+
+    // If we found a good intersection
+    if (best_t > 0 && best_dist < 0.001) {
+        Vector3 P = ray_O + ray_V * best_t;
+        double u = best_u;
+
+        // Calculate normal at intersection point
+        Vector3 axisPoint = O1 + axisDir * (u * axisLen);
+        Vector3 radialVec = P - axisPoint;
+
+        // Handle point on axis
+        Vector3 radialDir;
+        if (radialVec.Module() < EPS) {
+            radialDir = axisDir.GetAnVerticalVector().GetUnitVector();
+        } else {
+            radialDir = radialVec.GetUnitVector();
         }
 
-        t -= step;
-        if (t <= 0) break;
+        // Calculate derivative of radius along curve
+        const double du = 0.001;
+        auto [z1, r1] = valueAt(std::max(0.0, u - du));
+        auto [z2, r2] = valueAt(std::min(1.0, u + du));
+        double dr_du = (r2 - r1) / (2 * du);
 
-        lastU = u;
-        lastF = F;
+        // Calculate surface normal
+        Vector3 profileTangent = axisDir + radialDir * dr_du;
+        profileTangent = profileTangent.GetUnitVector();
+        Vector3 circleTangent = (radialDir * axisDir).GetUnitVector();
+        ret.N = (profileTangent * circleTangent).GetUnitVector();
+
+        // Ensure normal points outward
+        if (radialVec.Dot(ret.N) < 0) ret.N = -ret.N;
+
+        ret.dist = best_t;
+        ret.C = P;
+        ret.isCollide = true;
+        ret.front = (ray_V.Dot(ret.N) < 0);
+        ret.collide_primitive = this;
     }
 
     return ret;
@@ -519,22 +508,40 @@ Color Bezier::GetTexture(Vector3 crash_C) {
     return material->texture->GetSmoothColor(u, v);
 }
 
-
 std::pair<double, double> Bezier::valueAt(double u)
 {
+    if (Z.empty() || R.empty()) {
+        return std::make_pair(0.0, 0.0);
+    }
     return valueAt(u, Z, R);
 }
 
 
 std::pair<double, double> Bezier::valueAt(double u, const std::vector<double>& xs, const std::vector<double>& ys)
 {
-    const int degree = xs.size() - 1;
+    if (xs.empty() || ys.empty() || xs.size() != ys.size()) {
+        return std::make_pair(0.0, 0.0);
+    }
+
+    const int deg = xs.size() - 1;
+    if (deg < 0 || deg >= BEZIER_MAX_DEGREE) {
+        return std::make_pair(xs[0], ys[0]); // Default to first point
+    }
+
+    // Clamp u to [0,1]
+    u = std::max(0.0, std::min(1.0, u));
+
     double x = 0;
     double y = 0;
-    for (int i = 0; i <= degree; i++) {
-        double factor = double(Combination[degree][i]) * pow(u, i) * pow(1 - u, degree - i);
-        x += factor * xs[i];
-        y += factor * ys[i];
+
+    for (int i = 0; i <= deg; i++) {
+        double bernstein = Combination[deg][i] * pow(u, i) * pow(1 - u, deg - i);
+        x += bernstein * xs[i];
+        y += bernstein * ys[i];
     }
+
+    // Ensure radius is non-negative
+    y = std::max(0.0, y);
+
     return std::make_pair(x, y);
 }

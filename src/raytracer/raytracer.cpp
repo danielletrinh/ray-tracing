@@ -9,7 +9,7 @@
 
 const double SPEC_POWER = 20;
 const int MAX_DREFL_DEP = 2;
-const int MAX_RAYTRACING_DEP = 7;
+const int MAX_RAYTRACING_DEP = 6;
 const int HASH_FAC = 7;
 const int HASH_MOD = 10000007;
 const int NUM_RESAMPLE = 3;

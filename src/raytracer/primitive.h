@@ -156,8 +156,8 @@ class Bezier : public Primitive {
     Cylinder* boundingCylinder;
 
 public:
-    Bezier() : Primitive() {boundingCylinder = NULL; degree = -1;}
-    ~Bezier();
+    Bezier() : Primitive() {boundingCylinder = NULL; degree = -1; N = Vector3(0, 0, 1); Nx = Vector3(1, 0, 0); Ny = Vector3(0, 1, 0);}
+    ~Bezier() {delete boundingCylinder;}
 
     void Input( std::string , std::stringstream& );
     CollidePrimitive Collide( Vector3 ray_O , Vector3 ray_V );
