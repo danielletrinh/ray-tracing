@@ -98,3 +98,17 @@ primitive cylinder
     refl= 0.1
     drefl= 0.7
 end
+
+primitive voxel
+    O= -1.5 5.1 -2
+    size= 0.3 0.3 0.3
+    dim= 3 3 3
+    data= 111101111101000101111101111
+    color= 0.7 0.85 1
+    refr= 0.95
+    rindex= 1.33
+    absor= 0.1 0.1 0.2
+    diff= 0.1
+    spec= 0.7
+    refl= 0.2
+end

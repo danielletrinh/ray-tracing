@@ -26,6 +26,8 @@ const int Combination[BEZIER_MAX_DEGREE + 1][BEZIER_MAX_DEGREE + 1] =
 const int MAX_COLLIDE_TIMES = 10;
 const int MAX_COLLIDE_RANDS = 10;
 
+const double INF = 1e10;
+
 std::pair<double, double> ExpBlur::GetXY()
 {
     double x,y;
@@ -544,4 +546,125 @@ std::pair<double, double> Bezier::valueAt(double u, const std::vector<double>& x
     y = std::max(0.0, y);
 
     return std::make_pair(x, y);
+}
+
+// -----------------------------------------------
+
+void Voxel::Input(std::string var, std::stringstream& fin) {
+    if (var == "O=") O.Input(fin);
+    if (var == "size=") size.Input(fin);
+    if (var == "dim=") {
+        fin >> nx >> ny >> nz;
+        grid.resize(nx * ny * nz);
+    }
+    if (var == "data=") {
+        std::string data;
+        fin >> data;
+        for (int i = 0; i < data.length() && i < grid.size(); i++) {
+            grid[i] = (data[i] == '1');
+        }
+    }
+    Primitive::Input(var, fin);
+}
+
+CollidePrimitive Voxel::Collide(Vector3 ray_O, Vector3 ray_V) {
+    CollidePrimitive ret;
+    ray_V = ray_V.GetUnitVector();
+
+    Vector3 min = O;
+    Vector3 max = O + Vector3(nx * size.x, ny * size.y, nz * size.z);
+    double tMin = -INF, tMax = INF;
+
+    for (int i = 0; i < 3; i++) {
+        // Use original ray_O (world space), not rayPos
+        double rayO_i = (i == 0) ? ray_O.x : ((i == 1) ? ray_O.y : ray_O.z);
+        double rayV_i = (i == 0) ? ray_V.x : ((i == 1) ? ray_V.y : ray_V.z);
+        double min_i = (i == 0) ? min.x : ((i == 1) ? min.y : min.z);
+        double max_i = (i == 0) ? max.x : ((i == 1) ? max.y : max.z);
+
+        if (fabs(rayV_i) < EPS) {
+            if (rayO_i < min_i || rayO_i > max_i) return ret;
+        } else {
+            double t1 = (min_i - rayO_i) / rayV_i;
+            double t2 = (max_i - rayO_i) / rayV_i;
+            if (t1 > t2) std::swap(t1, t2);
+            tMin = std::max(tMin, t1);
+            tMax = std::min(tMax, t2);
+            if (tMin > tMax) return ret;
+        }
+    }
+
+    if (tMin < 0) tMin = 0;
+
+    // Now compute entry point and translate to local voxel space
+    Vector3 entryPoint = ray_O + ray_V * tMin;
+    Vector3 rayPos = entryPoint - O;
+
+    // Calculate initial voxel coordinates
+    int x = floor(rayPos.x / size.x);
+    int y = floor(rayPos.y / size.y);
+    int z = floor(rayPos.z / size.z);
+
+    // Clamp coordinates to valid range
+    x = std::max(0, std::min(nx-1, x));
+    y = std::max(0, std::min(ny-1, y));
+    z = std::max(0, std::min(nz-1, z));
+
+    // Calculate step direction
+    int stepX = (ray_V.x > 0) ? 1 : -1;
+    int stepY = (ray_V.y > 0) ? 1 : -1;
+    int stepZ = (ray_V.z > 0) ? 1 : -1;
+
+    // Calculate tMax and tDelta
+    double tMax_x = (fabs(ray_V.x) > EPS) ?
+        ((x + (stepX > 0 ? 1 : 0)) * size.x - rayPos.x) / ray_V.x : BIG_DIST;
+    double tMax_y = (fabs(ray_V.y) > EPS) ?
+        ((y + (stepY > 0 ? 1 : 0)) * size.y - rayPos.y) / ray_V.y : BIG_DIST;
+    double tMax_z = (fabs(ray_V.z) > EPS) ?
+        ((z + (stepZ > 0 ? 1 : 0)) * size.z - rayPos.z) / ray_V.z : BIG_DIST;
+
+    double tDelta_x = (fabs(ray_V.x) > EPS) ? size.x / fabs(ray_V.x) : BIG_DIST;
+    double tDelta_y = (fabs(ray_V.y) > EPS) ? size.y / fabs(ray_V.y) : BIG_DIST;
+    double tDelta_z = (fabs(ray_V.z) > EPS) ? size.z / fabs(ray_V.z) : BIG_DIST;
+
+    // DDA traversal
+    while (x >= 0 && x < nx && y >= 0 && y < ny && z >= 0 && z < nz) {
+        if (IsVoxelSet(x, y, z)) {
+            // Calculate exact intersection point
+            double t = std::min(std::min(tMax_x, tMax_y), tMax_z);
+            ret.dist = tMin + t;
+            ret.C = ray_O + ray_V * ret.dist;
+            ret.isCollide = true;
+            ret.collide_primitive = this;
+
+            // Calculate normal based on which face was hit
+            if (tMax_x < tMax_y && tMax_x < tMax_z)
+                ret.N = Vector3(-stepX, 0, 0);
+            else if (tMax_y < tMax_z)
+                ret.N = Vector3(0, -stepY, 0);
+            else
+                ret.N = Vector3(0, 0, -stepZ);
+
+            ret.front = ray_V.Dot(ret.N) < 0;
+            return ret;
+        }
+
+        // Advance to next voxel
+        if (tMax_x < tMax_y && tMax_x < tMax_z) {
+            x += stepX;
+            tMax_x += tDelta_x;
+        } else if (tMax_y < tMax_z) {
+            y += stepY;
+            tMax_y += tDelta_y;
+        } else {
+            z += stepZ;
+            tMax_z += tDelta_z;
+        }
+    }
+
+    return ret;
+}
+
+Color Voxel::GetTexture(Vector3 crash_C) {
+    return material->color;
 }

@@ -9,7 +9,7 @@
 
 const double SPEC_POWER = 20;
 const int MAX_DREFL_DEP = 2;
-const int MAX_RAYTRACING_DEP = 7;
+const int MAX_RAYTRACING_DEP = 6;
 const int HASH_FAC = 7;
 const int HASH_MOD = 10000007;
 const int NUM_RESAMPLE = 3;
@@ -74,14 +74,14 @@ Color Raytracer::CalnReflection(CollidePrimitive collide_primitive , Vector3 ray
     if (primitive->GetMaterial()->drefl < EPS || dep > MAX_DREFL_DEP) {
         return RayTracing(collide_primitive.C, ray_V, dep + 1, hash) * primitive->GetMaterial()->color * primitive->GetMaterial()->refl;
     }
-    else {
     // diffuse reflection (fuzzy reflection)
     else {
-        Vector3 diffuse_dir = ray_V.Diffuse();
-        Vector3 final_dir = (diffuse_dir + ray_V * primitive->GetMaterial()->drefl).GetUnitVector();
-        return RayTracing(collide_primitive.C, final_dir, dep + 1, hash) *
-            primitive->GetMaterial()->color *
-            primitive->GetMaterial()->drefl;
+        return Color();
+        // Vector3 diffuse_dir = ray_V.Diffuse();
+        // Vector3 final_dir = (diffuse_dir + ray_V * primitive->GetMaterial()->drefl).GetUnitVector();
+        // return RayTracing(collide_primitive.C, final_dir, dep + 1, hash) *
+        //     primitive->GetMaterial()->color *
+        //     primitive->GetMaterial()->drefl;
     }
 }
 
@@ -187,6 +187,7 @@ void Raytracer::CreateAll()
             if ( type == "square" ) new_primitive = new Square;
             if ( type == "cylinder" ) new_primitive = new Cylinder;
             if ( type == "bezier" ) new_primitive = new Bezier;
+            if ( type == "voxel" ) new_primitive = new Voxel;
 
             if ( new_primitive != nullptr ) {
                 new_primitive->SetNext( primitive_head );

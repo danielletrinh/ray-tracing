@@ -12,7 +12,7 @@
 
 extern const double EPS;
 extern const double PI;
-const double BIG_DIST = 1e100;
+const double BIG_DIST = 1e10;
 
 class Blur {
 public:
@@ -166,6 +166,31 @@ public:
 private:
     std::pair<double, double> valueAt(double u);
     std::pair<double, double> valueAt(double u, const std::vector<double>& xs, const std::vector<double>& ys);
+};
+
+class Voxel : public Primitive {
+protected:
+    Vector3 O;          // Origin (bottom-left-front corner)
+    Vector3 size;       // Size of each voxel
+    int nx, ny, nz;     // Grid dimensions
+    std::vector<bool> grid; // 3D grid stored as 1D array
+
+public:
+    Voxel() : Primitive(), nx(0), ny(0), nz(0) {}
+    ~Voxel() {grid.clear();}
+
+    void Input(std::string var, std::stringstream& fin);
+    CollidePrimitive Collide(Vector3 ray_O, Vector3 ray_V);
+    Color GetTexture(Vector3 crash_C);
+
+private:
+    int GetIndex(int x, int y, int z) const {
+        return x + nx * (y + ny * z);
+    }
+    bool IsVoxelSet(int x, int y, int z) const {
+        if (x < 0 || x >= nx || y < 0 || y >= ny || z < 0 || z >= nz) return false;
+        return grid[GetIndex(x, y, z)];
+    }
 };
 
 #endif
