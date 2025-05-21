@@ -76,12 +76,12 @@ Color Raytracer::CalnReflection(CollidePrimitive collide_primitive , Vector3 ray
     }
     // diffuse reflection (fuzzy reflection)
     else {
-        return Color();
-        // Vector3 diffuse_dir = ray_V.Diffuse();
-        // Vector3 final_dir = (diffuse_dir + ray_V * primitive->GetMaterial()->drefl).GetUnitVector();
-        // return RayTracing(collide_primitive.C, final_dir, dep + 1, hash) *
-        //     primitive->GetMaterial()->color *
-        //     primitive->GetMaterial()->drefl;
+        // return Color();
+        Vector3 diffuse_dir = ray_V.Diffuse();
+        Vector3 final_dir = (diffuse_dir + ray_V * primitive->GetMaterial()->drefl).GetUnitVector();
+        return RayTracing(collide_primitive.C, final_dir, dep + 1, hash) *
+            primitive->GetMaterial()->color *
+            primitive->GetMaterial()->drefl;
     }
 }
 
